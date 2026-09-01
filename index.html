@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>감자 질량 변화 그래프</title>
+  <style>
+    :root{
+      --bg:#f7f8fa;--card:#fff;--text:#1f2937;--muted:#6b7280;--line:#d1d5db;
+      --accent:#2563eb;--point:#0f766e;--trend:#dc2626;--zero:#111827;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    h1{font-size:26px;margin:0 0 8px}
+    .sub{color:var(--muted);margin:0 0 20px;line-height:1.6}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:center}
+    th{background:#f3f4f6;font-weight:700}
+    input{width:110px;padding:10px 8px;border:1px solid var(--line);border-radius:10px;font-size:16px;text-align:center;background:white}
+    .eqbox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 6px}
+    .eqbox strong{font-size:18px}
+    .equation{font-size:20px;font-weight:700;background:#f3f4f6;border-radius:10px;padding:10px 14px;min-width:220px}
+    .msg{color:var(--muted);font-size:14px}
+    .chart-wrap{overflow-x:auto}
+    svg{width:100%;min-width:700px;height:auto;display:block}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    button{border:0;border-radius:10px;padding:10px 14px;font-size:15px;cursor:pointer}
+    .primary{background:var(--accent);color:#fff}
+    .secondary{background:#e5e7eb;color:var(--text)}
+    @media (max-width:700px){
+      .wrap{padding:14px}.card{padding:14px}h1{font-size:22px}
+      th,td{padding:8px 6px;font-size:14px}input{width:94px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>감자 질량 변화 그래프</h1>
+    <p class="sub">가상실험에서 측정한 값을 입력하면 질량 변화율, 산점도, 선형 추세선과 추세선 식이 자동으로 나타납니다.</p>
+
+    <section class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>설탕 농도 (M)</th>
+            <th>처음 질량 (g)</th>
+            <th>최종 질량 (g)</th>
+            <th>질량 변화율 (%)</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="actions">
+        <button class="secondary" id="resetBtn" type="button">초기화</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="eqbox">
+        <strong>선형 추세선 식</strong>
+        <div class="equation" id="equation">—</div>
+      </div>
+      <p class="msg" id="message">5개 농도의 처음 질량과 최종 질량을 모두 입력하면 추세선이 표시됩니다.</p>
+    </section>
+
+    <section class="card">
+      <div class="chart-wrap">
+        <svg id="chart" viewBox="0 0 820 470" role="img" aria-label="설탕 농도에 따른 감자 질량 변화율 산점도와 선형 추세선"></svg>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (()=>{
+      const concentrations=[0.20,0.25,0.30,0.35,0.40];
+      const tbody=document.getElementById('tbody');
+      const chart=document.getElementById('chart');
+      const equation=document.getElementById('equation');
+      const message=document.getElementById('message');
+      const NS='http://www.w3.org/2000/svg';
+
+      concentrations.forEach((c,i)=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+          <td><strong>${c.toFixed(2)}</strong></td>
+          <td><input type="number" step="0.001" min="0.001" inputmode="decimal" data-kind="initial" data-i="${i}" aria-label="${c.toFixed(2)} M 처음 질량"></td>
+          <td><input type="number" step="0.001" min="0.001" inputmode="decimal" data-kind="final" data-i="${i}" aria-label="${c.toFixed(2)} M 최종 질량"></td>
+          <td id="pct-${i}">—</td>`;
+        tbody.appendChild(tr);
+      });
+
+      function svgLine(x1,y1,x2,y2,stroke='#d1d5db',width=1,dash=''){
+        const e=document.createElementNS(NS,'line');
+        e.setAttribute('x1',x1);e.setAttribute('y1',y1);e.setAttribute('x2',x2);e.setAttribute('y2',y2);
+        e.setAttribute('stroke',stroke);e.setAttribute('stroke-width',width);
+        if(dash)e.setAttribute('stroke-dasharray',dash);
+        chart.appendChild(e);
+      }
+      function svgText(x,y,t,anchor='middle',size=12,fill='#6b7280'){
+        const e=document.createElementNS(NS,'text');
+        e.setAttribute('x',x);e.setAttribute('y',y);e.setAttribute('text-anchor',anchor);
+        e.setAttribute('font-size',size);e.setAttribute('fill',fill);e.textContent=t;chart.appendChild(e);return e;
+      }
+      function svgPoint(x,y,r=6,fill='#0f766e'){
+        const e=document.createElementNS(NS,'circle');e.setAttribute('cx',x);e.setAttribute('cy',y);e.setAttribute('r',r);e.setAttribute('fill',fill);chart.appendChild(e);
+      }
+
+      function draw(ys,reg){
+        chart.innerHTML='';
+        const W=820,H=470,L=78,R=30,T=32,B=66;
+        const pw=W-L-R,ph=H-T-B;
+        const xMin=.18,xMax=.42;
+        const valid=ys.filter(v=>Number.isFinite(v));
+        let yMin=-10,yMax=10;
+        if(valid.length){
+          yMin=Math.min(-2,...valid);yMax=Math.max(2,...valid);
+          const pad=Math.max(2,(yMax-yMin)*.18);yMin-=pad;yMax+=pad;
+        }
+        if(reg){
+          const v1=reg.m*xMin+reg.b,v2=reg.m*xMax+reg.b;
+          yMin=Math.min(yMin,v1,v2);yMax=Math.max(yMax,v1,v2);
+        }
+        const X=x=>L+(x-xMin)/(xMax-xMin)*pw;
+        const Y=y=>T+(yMax-y)/(yMax-yMin)*ph;
+
+        for(let i=0;i<=5;i++){
+          const y=yMin+(yMax-yMin)*i/5;
+          svgLine(L,Y(y),W-R,Y(y));
+          svgText(L-10,Y(y)+4,y.toFixed(1),'end');
+        }
+        concentrations.forEach(x=>{
+          svgLine(X(x),T,X(x),H-B);
+          svgText(X(x),H-B+24,x.toFixed(2));
+        });
+        svgLine(L,T,L,H-B,'#111827',1.5);
+        svgLine(L,H-B,W-R,H-B,'#111827',1.5);
+        if(yMin<=0&&yMax>=0){
+          svgLine(L,Y(0),W-R,Y(0),'#111827',1.2,'6 5');
+          svgText(W-R-6,Y(0)-8,'질량 변화율 0%','end',11,'#111827');
+        }
+        svgText(L+pw/2,H-16,'설탕 농도 (M)','middle',14,'#374151');
+        const ylab=svgText(19,T+ph/2,'질량 변화율 (%)','middle',14,'#374151');
+        ylab.setAttribute('transform',`rotate(-90 19 ${T+ph/2})`);
+
+        ys.forEach((y,i)=>{if(Number.isFinite(y))svgPoint(X(concentrations[i]),Y(y));});
+        if(reg){
+          svgLine(X(xMin),Y(reg.m*xMin+reg.b),X(xMax),Y(reg.m*xMax+reg.b),'#dc2626',3);
+        }
+      }
+
+      function calculate(){
+        const ys=[];let complete=true;
+        concentrations.forEach((c,i)=>{
+          const aRaw=document.querySelector(`[data-kind="initial"][data-i="${i}"]`).value;
+          const bRaw=document.querySelector(`[data-kind="final"][data-i="${i}"]`).value;
+          const a=Number(aRaw),b=Number(bRaw);
+          if(aRaw!==''&&bRaw!==''&&a>0&&Number.isFinite(b)){
+            const pct=(b-a)/a*100;ys.push(pct);document.getElementById(`pct-${i}`).textContent=pct.toFixed(2);
+          }else{
+            ys.push(NaN);document.getElementById(`pct-${i}`).textContent='—';complete=false;
+          }
+        });
+        if(!complete){
+          equation.textContent='—';message.textContent='5개 농도의 처음 질량과 최종 질량을 모두 입력하면 추세선이 표시됩니다.';draw(ys,null);return;
+        }
+        const xs=concentrations,n=xs.length;
+        const mx=xs.reduce((a,b)=>a+b,0)/n,my=ys.reduce((a,b)=>a+b,0)/n;
+        let num=0,den=0;
+        for(let i=0;i<n;i++){num+=(xs[i]-mx)*(ys[i]-my);den+=(xs[i]-mx)**2;}
+        const m=num/den,b=my-m*mx;
+        if(!Number.isFinite(m)||!Number.isFinite(b)){
+          equation.textContent='계산 불가';message.textContent='입력값을 확인하세요.';draw(ys,null);return;
+        }
+        equation.textContent=`y = ${m.toFixed(2)}x ${b>=0?'+':'−'} ${Math.abs(b).toFixed(2)}`;
+        message.textContent='입력값을 수정하면 질량 변화율, 산점도와 추세선이 즉시 다시 계산됩니다.';
+        draw(ys,{m,b});
+      }
+
+      document.querySelectorAll('input').forEach(el=>el.addEventListener('input',calculate));
+      document.getElementById('resetBtn').addEventListener('click',()=>{
+        document.querySelectorAll('input').forEach(el=>el.value='');calculate();
+      });
+      draw([NaN,NaN,NaN,NaN,NaN],null);
+    })();
+  </script>
+</body>
+</html>
