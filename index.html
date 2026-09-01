@@ -15,7 +15,7 @@
     h1{font-size:26px;margin:0 0 8px}
     .sub{color:var(--muted);margin:0 0 20px;line-height:1.6}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:18px}
-    table{width:100%;border-collapse:collapse}
+    table{width:100%;border-collapse:collapse;min-width:1080px}
     th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:center}
     th{background:#f3f4f6;font-weight:700}
     input{width:110px;padding:10px 8px;border:1px solid var(--line);border-radius:10px;font-size:16px;text-align:center;background:white}
@@ -23,7 +23,9 @@
     .eqbox strong{font-size:18px}
     .equation{font-size:20px;font-weight:700;background:#f3f4f6;border-radius:10px;padding:10px 14px;min-width:220px}
     .msg{color:var(--muted);font-size:14px}
-    .chart-wrap{overflow-x:auto}
+    .table-wrap,.chart-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .group-head{background:#e5e7eb}
+    .avg-cell{font-weight:700;background:#f9fafb;white-space:nowrap}
     svg{width:100%;min-width:700px;height:auto;display:block}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
     button{border:0;border-radius:10px;padding:10px 14px;font-size:15px;cursor:pointer}
@@ -41,17 +43,25 @@
     <p class="sub">가상실험에서 측정한 값을 입력하면 질량 변화율, 산점도, 선형 추세선과 추세선 식이 자동으로 나타납니다.</p>
 
     <section class="card">
-      <table>
-        <thead>
-          <tr>
-            <th>설탕 농도 (M)</th>
-            <th>처음 질량 (g)</th>
-            <th>최종 질량 (g)</th>
-            <th>질량 변화율 (%)</th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">설탕 농도 (M)</th>
+              <th colspan="3" class="group-head">감자 1</th>
+              <th colspan="3" class="group-head">감자 2</th>
+              <th colspan="3" class="group-head">감자 3</th>
+              <th rowspan="2">평균 질량 변화율 (%)</th>
+            </tr>
+            <tr>
+              <th>처음 질량 (g)</th><th>최종 질량 (g)</th><th>변화율 (%)</th>
+              <th>처음 질량 (g)</th><th>최종 질량 (g)</th><th>변화율 (%)</th>
+              <th>처음 질량 (g)</th><th>최종 질량 (g)</th><th>변화율 (%)</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
       <div class="actions">
         <button class="secondary" id="resetBtn" type="button">초기화</button>
       </div>
@@ -62,7 +72,7 @@
         <strong>선형 추세선 식</strong>
         <div class="equation" id="equation">—</div>
       </div>
-      <p class="msg" id="message">5개 농도의 처음 질량과 최종 질량을 모두 입력하면 추세선이 표시됩니다.</p>
+      <p class="msg" id="message">5개 농도에서 감자 1·2·3의 처음 질량과 최종 질량을 모두 입력하면 평균 질량 변화율을 이용한 추세선이 표시됩니다.</p>
     </section>
 
     <section class="card">
@@ -83,11 +93,15 @@
 
       concentrations.forEach((c,i)=>{
         const tr=document.createElement('tr');
-        tr.innerHTML=`
-          <td><strong>${c.toFixed(2)}</strong></td>
-          <td><input type="number" step="0.001" min="0.001" inputmode="decimal" data-kind="initial" data-i="${i}" aria-label="${c.toFixed(2)} M 처음 질량"></td>
-          <td><input type="number" step="0.001" min="0.001" inputmode="decimal" data-kind="final" data-i="${i}" aria-label="${c.toFixed(2)} M 최종 질량"></td>
-          <td id="pct-${i}">—</td>`;
+        let cells=`<td><strong>${c.toFixed(2)}</strong></td>`;
+        for(let potato=1;potato<=3;potato++){
+          cells+=`
+            <td><input type="number" step="0.001" min="0.001" inputmode="decimal" data-kind="initial" data-i="${i}" data-potato="${potato}" aria-label="${c.toFixed(2)} M 감자 ${potato} 처음 질량"></td>
+            <td><input type="number" step="0.001" min="0.001" inputmode="decimal" data-kind="final" data-i="${i}" data-potato="${potato}" aria-label="${c.toFixed(2)} M 감자 ${potato} 최종 질량"></td>
+            <td id="pct-${i}-${potato}">—</td>`;
+        }
+        cells+=`<td id="avg-${i}" class="avg-cell">—</td>`;
+        tr.innerHTML=cells;
         tbody.appendChild(tr);
       });
 
@@ -153,17 +167,34 @@
       function calculate(){
         const ys=[];let complete=true;
         concentrations.forEach((c,i)=>{
-          const aRaw=document.querySelector(`[data-kind="initial"][data-i="${i}"]`).value;
-          const bRaw=document.querySelector(`[data-kind="final"][data-i="${i}"]`).value;
-          const a=Number(aRaw),b=Number(bRaw);
-          if(aRaw!==''&&bRaw!==''&&a>0&&Number.isFinite(b)){
-            const pct=(b-a)/a*100;ys.push(pct);document.getElementById(`pct-${i}`).textContent=pct.toFixed(2);
+          const pcts=[];
+          for(let potato=1;potato<=3;potato++){
+            const aRaw=document.querySelector(`[data-kind="initial"][data-i="${i}"][data-potato="${potato}"]`).value;
+            const bRaw=document.querySelector(`[data-kind="final"][data-i="${i}"][data-potato="${potato}"]`).value;
+            const a=Number(aRaw),b=Number(bRaw);
+            if(aRaw!==''&&bRaw!==''&&a>0&&Number.isFinite(b)){
+              const pct=(b-a)/a*100;
+              pcts.push(pct);
+              document.getElementById(`pct-${i}-${potato}`).textContent=pct.toFixed(2);
+            }else{
+              document.getElementById(`pct-${i}-${potato}`).textContent='—';
+              complete=false;
+            }
+          }
+          if(pcts.length===3){
+            const avg=pcts.reduce((sum,v)=>sum+v,0)/pcts.length;
+            ys.push(avg);
+            document.getElementById(`avg-${i}`).textContent=avg.toFixed(2);
           }else{
-            ys.push(NaN);document.getElementById(`pct-${i}`).textContent='—';complete=false;
+            ys.push(NaN);
+            document.getElementById(`avg-${i}`).textContent='—';
           }
         });
         if(!complete){
-          equation.textContent='—';message.textContent='5개 농도의 처음 질량과 최종 질량을 모두 입력하면 추세선이 표시됩니다.';draw(ys,null);return;
+          equation.textContent='—';
+          message.textContent='5개 농도에서 감자 1·2·3의 처음 질량과 최종 질량을 모두 입력하면 평균 질량 변화율을 이용한 추세선이 표시됩니다.';
+          draw(ys,null);
+          return;
         }
         const xs=concentrations,n=xs.length;
         const mx=xs.reduce((a,b)=>a+b,0)/n,my=ys.reduce((a,b)=>a+b,0)/n;
@@ -174,7 +205,7 @@
           equation.textContent='계산 불가';message.textContent='입력값을 확인하세요.';draw(ys,null);return;
         }
         equation.textContent=`y = ${m.toFixed(2)}x ${b>=0?'+':'−'} ${Math.abs(b).toFixed(2)}`;
-        message.textContent='입력값을 수정하면 질량 변화율, 산점도와 추세선이 즉시 다시 계산됩니다.';
+        message.textContent='각 감자의 질량 변화율을 계산한 뒤 농도별 평균값으로 산점도와 추세선을 표시합니다. 입력값을 수정하면 즉시 다시 계산됩니다.';
         draw(ys,{m,b});
       }
 
